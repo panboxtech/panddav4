@@ -1,6 +1,11 @@
 // views/clientes.js
 // Controller da view Clientes com listagem e modal completo de cadastro de novo cliente.
-// Ajuste: quando app.multiplosAcessos === false, o campo pontos simultaneos do ponto fica bloqueado e forçado para 1.
+// Atualizações:
+// - Servidor do ponto é pré-selecionado como Servidor1 e bloqueado se apenas um servidor estiver selecionado.
+// - Se dois servidores selecionados: permite alternar até o servidor atingir a capacidade (telas).
+// - Ao esgotar a capacidade de um servidor, ele fica indisponível e novos pontos são forçados ao outro servidor.
+// - Se pontos forem removidos liberando capacidade, o servidor volta a ficar disponível.
+// - Mantém validações de unicidade local/global, data de vencimento, soma por servidor igual a telas, etc.
 
 window.ClientesView = (function () {
   const containerId = 'clients-container';
@@ -52,7 +57,8 @@ window.ClientesView = (function () {
         const pontos = allPontos.filter(p => p.cliente === r.id);
         const somaPontos = pontos.reduce((s, x) => s + Number(x.pontosSimultaneos || 0), 0);
         const telas = r.assinatura ? Number(r.assinatura.telas || 0) : 0;
-        const percent = telas ? Math.min(100, Math.round((somaPontos / (telas * (r.servidor2 ? 2 : 1))) * 100)) : 0;
+        const serversCount = r.servidor2 ? 2 : 1;
+        const percent = telas ? Math.min(100, Math.round((somaPontos / (telas * serversCount)) * 100)) : 0;
         progTd.innerHTML = `<div>Total pontos: ${somaPontos} — Telas por servidor: ${telas}</div><div class="progress-bar"><div class="progress" style="width:${percent}%"></div></div>`;
 
         const actionsTd = document.createElement('td');
@@ -121,7 +127,7 @@ window.ClientesView = (function () {
   }
 
   // -------------------------
-  // Modal: Novo Cliente (com fluxo de pontos por servidor e lista resumida)
+  // Modal: Novo Cliente (com gerência de servidores e alocação automática)
   // -------------------------
   async function openNewClientModal() {
     const [planos, servidores, apps] = await Promise.all([PlanoService.list(), ServidorService.list(), AppService.list()]);
@@ -276,6 +282,16 @@ window.ClientesView = (function () {
     const pontosState = [];
     let editingIndex = -1;
 
+    // state helpers
+    function getSelectedServerIds() {
+      const s1 = selectS1.value ? Number(selectS1.value) : null;
+      const s2 = selectS2.value ? Number(selectS2.value) : null;
+      const arr = [];
+      if (s1) arr.push(s1);
+      if (s2) arr.push(s2);
+      return arr;
+    }
+
     function populatePfApps(serverId) {
       const filtered = apps.filter(a => Number(a.servidor) === Number(serverId));
       if (!filtered.length) {
@@ -283,7 +299,6 @@ window.ClientesView = (function () {
       } else {
         pfAppSel.innerHTML = `<option value="">Selecione app</option>` + filtered.map(a => `<option value="${a.id}" data-multi="${a.multiplosAcessos}">${a.nome} (${a.multiplosAcessos ? 'multi' : 'exclusivo'})</option>`).join('');
       }
-      // when apps refreshed, re-evaluate pontos input lock based on selected app
       handleAppChangeLock();
     }
 
@@ -298,14 +313,80 @@ window.ClientesView = (function () {
       validateAll();
     });
 
-    pfServidorSel.addEventListener('change', () => {
+    // When servers selection change, adjust pfServidorSel behavior
+    selectS1.addEventListener('change', () => {
+      adjustPfServidorAvailability();
+      resetPontoForm();
+      renderPontosList();
+      validateAll();
+    });
+    selectS2.addEventListener('change', () => {
+      adjustPfServidorAvailability();
+      resetPontoForm();
+      renderPontosList();
+      validateAll();
+    });
+
+    function adjustPfServidorAvailability() {
+      const serverIds = getSelectedServerIds();
+      // if only one server selected -> force that server and disable changes
+      if (serverIds.length === 1) {
+        pfServidorSel.innerHTML = `<option value="${serverIds[0]}">${(servidores.find(s=>s.id===serverIds[0])||{nome:'#'}).nome}</option>`;
+        pfServidorSel.value = serverIds[0];
+        pfServidorSel.disabled = true;
+      } else if (serverIds.length === 2) {
+        // show both options, default to server1 if available
+        const s1 = Number(selectS1.value);
+        const s2 = Number(selectS2.value);
+        pfServidorSel.disabled = false;
+        pfServidorSel.innerHTML = `<option value="${s1}">${(servidores.find(s=>s.id===s1)||{nome:'#'}).nome} (Servidor 1)</option><option value="${s2}">${(servidores.find(s=>s.id===s2)||{nome:'#'}).nome} (Servidor 2)</option>`;
+        // prefer server1 when capacity remains, else prefer server2
+        const totals = computeTotals();
+        const telasVal = Number(inputTelas.value) || 0;
+        const s1sum = totals[s1] || 0;
+        const s2sum = totals[s2] || 0;
+        if (s1sum < telasVal) pfServidorSel.value = s1;
+        else pfServidorSel.value = s2;
+        // if s1 full, we will disable choosing s1 (and similarly for s2 when full) via updatePfServidorOptionsLock
+        updatePfServidorOptionsLock();
+      } else {
+        // none selected: clear and enable to choose any (but will be validated on add)
+        pfServidorSel.disabled = false;
+        pfServidorSel.innerHTML = `<option value="">Selecione servidor</option>` + servidores.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+      }
+      // refresh apps list for pfServidorSel current value
       populatePfApps(pfServidorSel.value);
-    });
+    }
 
-    pfAppSel.addEventListener('change', () => {
-      handleAppChangeLock();
-    });
+    // disable option when server is full. When full, pfServidorSel will not allow selecting it.
+    function updatePfServidorOptionsLock() {
+      const serverIds = getSelectedServerIds();
+      if (serverIds.length !== 2) return;
+      const s1 = Number(selectS1.value);
+      const s2 = Number(selectS2.value);
+      const totals = computeTotals();
+      const telasVal = Number(inputTelas.value) || 0;
+      const s1full = (totals[s1] || 0) >= telasVal;
+      const s2full = (totals[s2] || 0) >= telasVal;
+      // rebuild options with disabled attribute where appropriate
+      pfServidorSel.innerHTML = `<option value="${s1}" ${s1full ? 'disabled' : ''}>${(servidores.find(s=>s.id===s1)||{nome:'#'}).nome} (Servidor 1${s1full ? ' - ESGOTADO' : ''})</option>
+                                 <option value="${s2}" ${s2full ? 'disabled' : ''}>${(servidores.find(s=>s.id===s2)||{nome:'#'}).nome} (Servidor 2${s2full ? ' - ESGOTADO' : ''})</option>`;
+      // If currently selected server is full, auto-select the other (if not full)
+      const current = Number(pfServidorSel.value);
+      if (current && ((current === s1 && s1full) || (current === s2 && s2full))) {
+        if (!s1full && s1) pfServidorSel.value = s1;
+        else if (!s2full && s2) pfServidorSel.value = s2;
+        else {
+          // both full: disable add actions by keeping current selection but mark disabled via pfAddBtn validation
+        }
+        populatePfApps(pfServidorSel.value);
+      }
+      // ensure pfServidorSel disabled state respects single/multiple servers selection
+      pfServidorSel.disabled = false;
+    }
 
+    // app change -> lock pontos when app exclusive
+    pfAppSel.addEventListener('change', handleAppChangeLock);
     function handleAppChangeLock() {
       const appId = pfAppSel.value ? Number(pfAppSel.value) : null;
       if (!appId) {
@@ -324,6 +405,7 @@ window.ClientesView = (function () {
       }
     }
 
+    // add / update ponto
     pfAddBtn.addEventListener('click', async () => {
       const servidor = pfServidorSel.value ? Number(pfServidorSel.value) : null;
       const appId = pfAppSel.value ? Number(pfAppSel.value) : null;
@@ -345,18 +427,19 @@ window.ClientesView = (function () {
         if (duplicateLocal) { DomUtils.toast(`Usuário ${usuario} já usado em outro ponto exclusivo (local)`); return; }
       }
 
-      const pros = computeTotalsIfApplied({ servidor, pontosSimultaneos: pontosNum, editingIndex });
+      // ensure servidor is one of selected servers
+      const serversSelected = getSelectedServerIds();
+      if (!serversSelected.includes(servidor)) { DomUtils.toast('Servidor do ponto deve ser um dos servidores selecionados no cliente'); return; }
 
+      // compute prospective totals and check capacity per server
+      const pros = computeTotalsIfApplied({ servidor, pontosSimultaneos: pontosNum }, editingIndex);
       const telasVal = Number(inputTelas.value) || 0;
-      if (!telasVal || telasVal < 1) { DomUtils.toast('Defina telas >=1 antes de adicionar pontos'); return; }
+      // if both servers selected, make sure adding doesn't exceed telas per server
+      for (const sid of getSelectedServerIds()) {
+        if ((pros[sid] || 0) > telasVal) { DomUtils.toast(`A operação excede o limite de ${telasVal} telas para o servidor ${(servidores.find(s=>s.id===sid)||{nome:'#'}).nome}`); return; }
+      }
 
-      const serversSelected = [selectS1.value ? Number(selectS1.value) : null];
-      if (selectS2.value) serversSelected.push(Number(selectS2.value));
-      if (!serversSelected.includes(servidor)) { DomUtils.toast('Escolha um servidor válido (deve ser Servidor1 ou Servidor2)'); return; }
-
-      const exceed = serversSelected.some(sid => (pros[sid] || 0) > telasVal);
-      if (exceed) { DomUtils.toast(`A operação excede o limite de ${telasVal} telas para um dos servidores`); return; }
-
+      // commit add/update
       if (editingIndex >= 0) {
         pontosState[editingIndex] = { servidor, app: appId, pontosSimultaneos: pontosNum, usuario, senha };
         editingIndex = -1;
@@ -368,6 +451,8 @@ window.ClientesView = (function () {
 
       resetPontoForm();
       renderPontosList();
+      // after change, update pfServidor availability (auto-allocate to other server if necessary)
+      updatePfServidorOptionsLock();
       validateAll();
       pfAppSel.focus();
     });
@@ -380,8 +465,25 @@ window.ClientesView = (function () {
     });
 
     function resetPontoForm() {
-      if (selectS1.value) pfServidorSel.value = selectS1.value;
-      else pfServidorSel.value = '';
+      const serverIds = getSelectedServerIds();
+      if (serverIds.length === 1) {
+        pfServidorSel.value = serverIds[0];
+        pfServidorSel.disabled = true;
+      } else if (serverIds.length === 2) {
+        // prefer server1 unless full
+        const s1 = Number(selectS1.value);
+        const s2 = Number(selectS2.value);
+        const totals = computeTotals();
+        const telasVal = Number(inputTelas.value) || 0;
+        if ((totals[s1] || 0) < telasVal) pfServidorSel.value = s1;
+        else pfServidorSel.value = s2;
+        pfServidorSel.disabled = false;
+        updatePfServidorOptionsLock();
+      } else {
+        pfServidorSel.value = '';
+        pfServidorSel.disabled = false;
+        pfServidorSel.innerHTML = `<option value="">Selecione servidor</option>` + servidores.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
+      }
       populatePfApps(pfServidorSel.value);
       pfAppSel.value = '';
       pfPontosInp.value = 1;
@@ -412,13 +514,13 @@ window.ClientesView = (function () {
             pfServidorSel.value = p.servidor;
             populatePfApps(pfServidorSel.value);
             pfAppSel.value = p.app;
-            // ensure lock state for pontosSimultaneos if app exclusive
             handleAppChangeLock();
             pfPontosInp.value = p.pontosSimultaneos;
             pfUserInp.value = p.usuario;
             pfPassInp.value = p.senha;
             pfAddBtn.textContent = 'Atualizar ponto';
             pfCancelEditBtn.style.display = 'inline-block';
+            // When editing, if server is full we still allow editing this existing slot
           });
           const btnRemove = DomUtils.createEl('button', { class: 'btn', text: 'Remover' });
           btnRemove.addEventListener('click', () => {
@@ -427,6 +529,8 @@ window.ClientesView = (function () {
             if (editingIndex === idx) {
               editingIndex = -1; pfAddBtn.textContent = 'Adicionar ponto'; pfCancelEditBtn.style.display = 'none'; resetPontoForm();
             } else if (editingIndex > idx) editingIndex--;
+            // after removal, server capacity may be freed => allow returning to server previously full
+            updatePfServidorOptionsLock();
             renderPontosList();
             validateAll();
           });
@@ -490,16 +594,18 @@ window.ClientesView = (function () {
         if (chosen <= startOfToday) { errVenc.textContent = 'Data deve ser maior que hoje'; errVenc.classList.remove('hidden'); valid = false; } else { errVenc.classList.add('hidden'); }
       }
 
+      // totals per selected server must equal telas
       const totals = computeTotals();
-      const s1id = selectS1.value ? Number(selectS1.value) : null;
-      const s2id = selectS2.value ? Number(selectS2.value) : null;
-      if (s1id) {
-        if ((totals[s1id] || 0) !== telasVal) { errTelas.textContent = `Servidor 1: soma pontos deve ser exatamente ${telasVal}`; errTelas.classList.remove('hidden'); valid = false; }
-      }
-      if (s2id) {
-        if ((totals[s2id] || 0) !== telasVal) { errTelas.textContent = `Servidor 2: soma pontos deve ser exatamente ${telasVal}`; errTelas.classList.remove('hidden'); valid = false; }
+      const urls = getSelectedServerIds();
+      for (const sid of urls) {
+        if ((totals[sid] || 0) !== telasVal) {
+          errTelas.textContent = `Servidor ${(sid === Number(selectS1.value) ? '1' : '2')}: soma pontos deve ser exatamente ${telasVal}`;
+          errTelas.classList.remove('hidden');
+          valid = false;
+        }
       }
 
+      // local uniqueness checks for exclusive apps
       for (let i = 0; i < pontosState.length; i++) {
         const p = pontosState[i];
         const appMeta = apps.find(a => a.id === p.app);
@@ -539,6 +645,7 @@ window.ClientesView = (function () {
       if (confirm('Fechar sem salvar?')) document.body.removeChild(overlay);
     });
 
+    // Save flow with global uniqueness check for exclusive apps
     saveBtn.addEventListener('click', async () => {
       const ok = await validateAll();
       if (!ok) { DomUtils.toast('Corrija os erros antes de salvar'); return; }
