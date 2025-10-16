@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pandda - Gestão</title>
+  <link rel="stylesheet" href="css/global.css" />
+  <link rel="stylesheet" href="css/login.css" />
+  <link rel="stylesheet" href="css/clientes.css" />
+  <link rel="stylesheet" href="css/planos.css" />
+  <link rel="stylesheet" href="css/servidores.css" />
+  <link rel="stylesheet" href="css/apps.css" />
+  <link rel="stylesheet" href="css/assinaturas.css" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+  <div id="app"></div>
+
+  <template id="layout-shell">
+    <div class="topbar">
+      <div class="brand">Pandda</div>
+      <div class="session-info">
+        <span id="session-email"></span>
+        <button id="logout-btn">Sair</button>
+      </div>
+    </div>
+    <div class="layout">
+      <nav class="sidebar">
+        <ul>
+          <li><a href="#/clientes">Clientes</a></li>
+          <li><a href="#/planos">Planos</a></li>
+          <li><a href="#/servidores">Servidores</a></li>
+          <li><a href="#/apps">Apps</a></li>
+          <li><a href="#/assinaturas">Assinaturas</a></li>
+          <li><a href="#/admin">Admin</a></li>
+        </ul>
+      </nav>
+      <main id="view-root"></main>
+    </div>
+  </template>
+
+  <script src="js/dom-utils.js"></script>
+  <script src="js/mock-provider.js"></script>
+  <script src="js/supabase-service.js"></script>
+  <script src="entities/admin.js"></script>
+  <script src="entities/plano.js"></script>
+  <script src="entities/servidor.js"></script>
+  <script src="entities/app.js"></script>
+  <script src="entities/assinatura.js"></script>
+  <script src="entities/pontoDeAcesso.js"></script>
+  <script src="entities/cliente.js"></script>
+  <script src="views/login.js"></script>
+  <script src="views/clientes.js"></script>
+  <script src="views/planos.js"></script>
+  <script src="views/servidores.js"></script>
+  <script src="views/apps.js"></script>
+  <script src="views/assinaturas.js"></script>
+  <script src="views/admin.js"></script>
+  <script src="js/app-router.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
