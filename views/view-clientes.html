@@ -1,0 +1,23 @@
+<section>
+  <h2>Clientes</h2>
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div>
+        <select id="filter-clients">
+          <option value="all">Todos</option>
+          <option value="<=3">Vencendo <=3 dias</option>
+          <option value="<30">Vencidos &lt;30 dias</option>
+          <option value="vencidos">Todos vencidos</option>
+        </select>
+        <select id="sort-clients">
+          <option value="vencimento">Por vencimento</option>
+          <option value="nome">Por nome</option>
+        </select>
+      </div>
+      <div>
+        <button id="btn-new-client" class="btn">Novo Cliente</button>
+      </div>
+    </div>
+    <div id="clients-container" class="client-list" style="margin-top:12px"></div>
+  </div>
+</section>
