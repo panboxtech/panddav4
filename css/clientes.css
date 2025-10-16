@@ -1,4 +1,57 @@
+/* css/clientes.css
+   Estilos para listagem e modal de cliente com comportamento responsivo
+   - Accordion/sections (.section, .section-header, .section-body)
+   - Mobile: mostra uma seção por vez (wizard-like) e botões Next/Back
+   - Transições suaves e prevenção de zoom desnecessário
+*/
+
 .client-list table{width:100%;border-collapse:collapse}
 .client-list th, .client-list td{padding:8px;border-bottom:1px solid #eef1f5;text-align:left}
 .client-actions button{margin-right:6px}
 .ponto-block{border:1px dashed #e1e6f0;padding:8px;border-radius:6px;margin-top:8px}
+
+/* Modal layout tweaks */
+.card { background: #fff; border-radius: 6px; box-shadow: 0 1px 2px rgba(0,0,0,.04); padding:12px; }
+
+/* Sections / Accordion */
+.section { border: 1px solid #e6e9ee; border-radius:6px; margin-bottom:12px; overflow:hidden; background:#fff; }
+.section-header { display:flex; align-items:center; justify-content:space-between; padding:10px 12px; cursor:pointer; }
+.section-header h4 { margin:0; font-size:15px; }
+.section-toggle-btn { background:transparent; border:0; color:var(--accent); cursor:pointer; font-size:14px; }
+.section-body { padding:12px; transition: max-height .28s ease; overflow:hidden; }
+
+/* collapsed state (hidden body) */
+.section.collapsed .section-body { max-height:0; padding-top:0; padding-bottom:0; }
+
+/* expanded state */
+.section.expanded .section-body { max-height:2000px; }
+
+/* Form grid adjustments inside modal */
+.form-grid { display:grid; grid-template-columns:1fr 420px; gap:12px; align-items:start; }
+
+/* Punto list */
+.pontos-summary table{width:100%;border-collapse:collapse}
+.pontos-summary th, .pontos-summary td{padding:6px;border-bottom:1px solid #f0f3f7;text-align:left;font-size:13px}
+
+/* Totals */
+.totals { font-size:13px; color:#333; margin-top:8px; }
+
+/* Mobile responsiveness */
+@media (max-width: 860px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .card { width: 94vw; padding:14px; }
+  /* Wizard behavior: only one .section expanded at a time */
+  .section-body { max-height:0; }
+  .section.expanded .section-body { max-height:1200px; }
+  .wizard-nav { display:flex; justify-content:space-between; gap:8px; margin-top:8px; }
+}
+
+/* Small mobile: make inputs full width and increase tappable area */
+@media (max-width: 420px) {
+  .input { padding:10px; font-size:15px; }
+  .btn { padding:10px 14px; font-size:15px; }
+  .section-header { padding:12px; }
+}
+
+/* Helper hide/show */
+.hidden { display:none; }
