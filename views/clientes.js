@@ -1,11 +1,6 @@
 // views/clientes.js
 // Controller da view Clientes com listagem e modal completo de cadastro de novo cliente.
-// Modificações importantes:
-// - Telas é interpretado como "telas por servidor".
-// - Pontos são gerenciados em uma lista resumida: preencher formulário de ponto → "Adicionar" → ponto vai para a lista; campos resetam.
-// - Cada ponto na lista tem ações Editar / Remover.
-// - Validações: soma de pontos por servidor === telas, unicidade local/global para apps exclusivos, dataDeVencimento obrigatória e futura.
-// - Persistência via ClienteService.createWithAssinaturaAndPontos (mock transaction).
+// Ajuste: quando app.multiplosAcessos === false, o campo pontos simultaneos do ponto fica bloqueado e forçado para 1.
 
 window.ClientesView = (function () {
   const containerId = 'clients-container';
@@ -55,7 +50,6 @@ window.ClientesView = (function () {
 
         const progTd = document.createElement('td');
         const pontos = allPontos.filter(p => p.cliente === r.id);
-        // compute soma por servidor display (soma total x telas por servidor)
         const somaPontos = pontos.reduce((s, x) => s + Number(x.pontosSimultaneos || 0), 0);
         const telas = r.assinatura ? Number(r.assinatura.telas || 0) : 0;
         const percent = telas ? Math.min(100, Math.round((somaPontos / (telas * (r.servidor2 ? 2 : 1))) * 100)) : 0;
@@ -131,11 +125,9 @@ window.ClientesView = (function () {
   // -------------------------
   async function openNewClientModal() {
     const [planos, servidores, apps] = await Promise.all([PlanoService.list(), ServidorService.list(), AppService.list()]);
-    // prefer server time via SupabaseService if available; fallback to local now
     let serverNow = new Date();
     const today = serverNow;
 
-    // overlay and modal shell
     const overlay = document.createElement('div');
     overlay.style.position = 'fixed';
     overlay.style.left = '0';
@@ -158,60 +150,50 @@ window.ClientesView = (function () {
     const title = document.createElement('h3'); title.textContent = 'Novo Cliente';
     box.appendChild(title);
 
-    // form layout: columns
     const formGrid = document.createElement('div');
     formGrid.className = 'form-grid';
     formGrid.style.gridTemplateColumns = '1fr 420px';
     formGrid.style.gap = '16px';
 
-    // left column: cliente fields + vencimento
     const leftCol = document.createElement('div');
 
-    // Nome
     const nomeLabel = document.createElement('label'); nomeLabel.textContent = 'Nome *';
     const inputNome = DomUtils.createEl('input', { class: 'input' }); inputNome.type = 'text';
     const errNome = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(nomeLabel); leftCol.appendChild(inputNome); leftCol.appendChild(errNome);
 
-    // Telefone
     const telLabel = document.createElement('label'); telLabel.textContent = 'Telefone *';
     const inputTel = DomUtils.createEl('input', { class: 'input' }); inputTel.type = 'tel';
     const errTel = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(telLabel); leftCol.appendChild(inputTel); leftCol.appendChild(errTel);
 
-    // Email
     const emailLabel = document.createElement('label'); emailLabel.textContent = 'Email';
     const inputEmail = DomUtils.createEl('input', { class: 'input' }); inputEmail.type = 'email';
     const errEmail = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(emailLabel); leftCol.appendChild(inputEmail); leftCol.appendChild(errEmail);
 
-    // Plano select
     const planoLabel = document.createElement('label'); planoLabel.textContent = 'Plano *';
     const selectPlano = document.createElement('select'); selectPlano.className = 'input';
     selectPlano.innerHTML = `<option value="">Selecione um plano</option>` + planos.map(p => `<option value="${p.id}" data-validade="${p.validadeEmMeses}">${p.nome} (${p.validadeEmMeses} meses)</option>`).join('');
     const errPlano = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(planoLabel); leftCol.appendChild(selectPlano); leftCol.appendChild(errPlano);
 
-    // Data de vencimento
     const vencLabel = document.createElement('label'); vencLabel.textContent = 'Data de Vencimento *';
     const inputVenc = DomUtils.createEl('input', { class: 'input' }); inputVenc.type = 'date';
     const errVenc = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(vencLabel); leftCol.appendChild(inputVenc); leftCol.appendChild(errVenc);
 
-    // Telas (por servidor)
     const telasLabel = document.createElement('label'); telasLabel.textContent = 'Telas por servidor *';
     const inputTelas = DomUtils.createEl('input', { class: 'input' }); inputTelas.type = 'number'; inputTelas.min = 1; inputTelas.value = 1;
     const errTelas = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(telasLabel); leftCol.appendChild(inputTelas); leftCol.appendChild(errTelas);
 
-    // Servidor 1
     const s1Label = document.createElement('label'); s1Label.textContent = 'Servidor 1 *';
     const selectS1 = document.createElement('select'); selectS1.className = 'input';
     selectS1.innerHTML = `<option value="">Selecione servidor 1</option>` + servidores.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
     const errS1 = DomUtils.createEl('small', { class: 'error hidden', text: '' });
     leftCol.appendChild(s1Label); leftCol.appendChild(selectS1); leftCol.appendChild(errS1);
 
-    // Servidor 2 (opcional)
     const s2Label = document.createElement('label'); s2Label.textContent = 'Servidor 2 (opcional)';
     const selectS2 = document.createElement('select'); selectS2.className = 'input';
     selectS2.innerHTML = `<option value="">Selecione um segundo servidor (opcional)</option>` + servidores.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
@@ -220,13 +202,11 @@ window.ClientesView = (function () {
 
     formGrid.appendChild(leftCol);
 
-    // right column: gerenciamento de pontos (form de ponto + lista resumida + totais por servidor)
     const rightCol = document.createElement('div');
 
     const pontosTitle = document.createElement('strong'); pontosTitle.textContent = 'Gerenciar Pontos de Acesso';
     rightCol.appendChild(pontosTitle);
 
-    // ponto form (small) used to add or edit a single point
     const pontoForm = document.createElement('div');
     pontoForm.style.border = '1px solid #e6e9ee';
     pontoForm.style.padding = '8px';
@@ -234,34 +214,28 @@ window.ClientesView = (function () {
     pontoForm.style.marginTop = '8px';
     pontoForm.style.background = '#fff';
 
-    // server selector in ponto (prefill with server1)
     const pfServidorLabel = document.createElement('label'); pfServidorLabel.textContent = 'Servidor do ponto *';
     const pfServidorSel = document.createElement('select'); pfServidorSel.className = 'input';
     pfServidorSel.innerHTML = `<option value="">Selecione servidor</option>` + servidores.map(s => `<option value="${s.id}">${s.nome}</option>`).join('');
     pontoForm.appendChild(pfServidorLabel); pontoForm.appendChild(pfServidorSel);
 
-    // app select (filtered by server)
     const pfAppLabel = document.createElement('label'); pfAppLabel.textContent = 'App *';
     const pfAppSel = document.createElement('select'); pfAppSel.className = 'input';
     pfAppSel.innerHTML = `<option value="">Selecione servidor primeiro</option>`;
     pontoForm.appendChild(pfAppLabel); pontoForm.appendChild(pfAppSel);
 
-    // pontos simultaneos
     const pfPontosLabel = document.createElement('label'); pfPontosLabel.textContent = 'Pontos simultâneos *';
     const pfPontosInp = DomUtils.createEl('input', { class: 'input' }); pfPontosInp.type = 'number'; pfPontosInp.min = 1; pfPontosInp.value = 1;
     pontoForm.appendChild(pfPontosLabel); pontoForm.appendChild(pfPontosInp);
 
-    // usuario
     const pfUserLabel = document.createElement('label'); pfUserLabel.textContent = 'Usuário *';
     const pfUserInp = DomUtils.createEl('input', { class: 'input' }); pfUserInp.type = 'text';
     pontoForm.appendChild(pfUserLabel); pontoForm.appendChild(pfUserInp);
 
-    // senha
     const pfPassLabel = document.createElement('label'); pfPassLabel.textContent = 'Senha *';
     const pfPassInp = DomUtils.createEl('input', { class: 'input' }); pfPassInp.type = 'text';
     pontoForm.appendChild(pfPassLabel); pontoForm.appendChild(pfPassInp);
 
-    // add/update button
     const pfActions = document.createElement('div'); pfActions.style.display = 'flex'; pfActions.style.justifyContent = 'flex-end'; pfActions.style.gap = '8px'; pfActions.style.marginTop = '8px';
     const pfAddBtn = DomUtils.createEl('button', { class: 'btn', text: 'Adicionar ponto' });
     const pfCancelEditBtn = DomUtils.createEl('button', { class: 'btn ghost', text: 'Cancelar edição' });
@@ -271,7 +245,6 @@ window.ClientesView = (function () {
 
     rightCol.appendChild(pontoForm);
 
-    // lista resumida de pontos adicionados
     const listaWrapper = document.createElement('div');
     listaWrapper.style.marginTop = '12px';
     const listaTitle = document.createElement('strong'); listaTitle.textContent = 'Pontos adicionados';
@@ -279,7 +252,6 @@ window.ClientesView = (function () {
     const pontosListEl = document.createElement('div'); pontosListEl.style.marginTop = '8px';
     listaWrapper.appendChild(pontosListEl);
 
-    // totais por servidor
     const totaisWrapper = document.createElement('div'); totaisWrapper.style.marginTop = '12px';
     totaisWrapper.innerHTML = `<div><strong>Totais por servidor</strong></div>`;
     const totaisContent = document.createElement('div'); totaisContent.style.marginTop = '6px';
@@ -291,7 +263,6 @@ window.ClientesView = (function () {
     formGrid.appendChild(rightCol);
     box.appendChild(formGrid);
 
-    // footer actions
     const footer = document.createElement('div'); footer.style.display = 'flex'; footer.style.justifyContent = 'flex-end'; footer.style.gap = '8px'; footer.style.marginTop = '12px';
     const cancelBtn = DomUtils.createEl('button', { class: 'btn ghost', text: 'Cancelar' });
     const saveBtn = DomUtils.createEl('button', { class: 'btn', text: 'Salvar Cliente' });
@@ -302,11 +273,9 @@ window.ClientesView = (function () {
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
-    // state
-    const pontosState = []; // each: { id?:temp, servidor, app, pontosSimultaneos, usuario, senha }
-    let editingIndex = -1; // -1 => adding; >=0 => editing that index
+    const pontosState = [];
+    let editingIndex = -1;
 
-    // helpers: populate app options based on server selection for ponto form
     function populatePfApps(serverId) {
       const filtered = apps.filter(a => Number(a.servidor) === Number(serverId));
       if (!filtered.length) {
@@ -314,9 +283,10 @@ window.ClientesView = (function () {
       } else {
         pfAppSel.innerHTML = `<option value="">Selecione app</option>` + filtered.map(a => `<option value="${a.id}" data-multi="${a.multiplosAcessos}">${a.nome} (${a.multiplosAcessos ? 'multi' : 'exclusivo'})</option>`).join('');
       }
+      // when apps refreshed, re-evaluate pontos input lock based on selected app
+      handleAppChangeLock();
     }
 
-    // compute default vencimento when plano chosen
     selectPlano.addEventListener('change', () => {
       const selected = selectPlano.selectedOptions[0];
       if (!selected) return;
@@ -328,14 +298,33 @@ window.ClientesView = (function () {
       validateAll();
     });
 
-    // ponto form server change
     pfServidorSel.addEventListener('change', () => {
       populatePfApps(pfServidorSel.value);
     });
 
-    // add / update ponto
+    pfAppSel.addEventListener('change', () => {
+      handleAppChangeLock();
+    });
+
+    function handleAppChangeLock() {
+      const appId = pfAppSel.value ? Number(pfAppSel.value) : null;
+      if (!appId) {
+        pfPontosInp.disabled = false;
+        pfPontosInp.min = 1;
+        return;
+      }
+      const appMeta = apps.find(a => a.id === appId);
+      if (appMeta && appMeta.multiplosAcessos === false) {
+        pfPontosInp.value = 1;
+        pfPontosInp.disabled = true;
+        pfPontosInp.min = 1;
+      } else {
+        pfPontosInp.disabled = false;
+        pfPontosInp.min = 1;
+      }
+    }
+
     pfAddBtn.addEventListener('click', async () => {
-      // validate ponto fields
       const servidor = pfServidorSel.value ? Number(pfServidorSel.value) : null;
       const appId = pfAppSel.value ? Number(pfAppSel.value) : null;
       const pontosNum = Number(pfPontosInp.value) || 0;
@@ -348,53 +337,41 @@ window.ClientesView = (function () {
       if (!usuario) { DomUtils.toast('Usuário obrigatório'); return; }
       if (!senha) { DomUtils.toast('Senha obrigatória'); return; }
 
-      // check app multiplosAcessos rule (local duplicates)
       const appMeta = apps.find(a => a.id === appId);
       if (!appMeta) { DomUtils.toast('App inválido'); return; }
 
-      // If exclusive, ensure no duplicate usuario in pontosState for same app
       if (!appMeta.multiplosAcessos) {
         const duplicateLocal = pontosState.some((p, idx) => p.app === appId && p.usuario === usuario && idx !== editingIndex);
         if (duplicateLocal) { DomUtils.toast(`Usuário ${usuario} já usado em outro ponto exclusivo (local)`); return; }
       }
 
-      // compute prospective totals per server if this add/update applied
       const pros = computeTotalsIfApplied({ servidor, pontosSimultaneos: pontosNum, editingIndex });
 
-      // ensure no server exceeds telas per server
       const telasVal = Number(inputTelas.value) || 0;
       if (!telasVal || telasVal < 1) { DomUtils.toast('Defina telas >=1 antes de adicionar pontos'); return; }
 
-      // only check servers that are selected (s1 mandatory, s2 optional)
       const serversSelected = [selectS1.value ? Number(selectS1.value) : null];
       if (selectS2.value) serversSelected.push(Number(selectS2.value));
-      // If the ponto.server is not among selected servers, warn
       if (!serversSelected.includes(servidor)) { DomUtils.toast('Escolha um servidor válido (deve ser Servidor1 ou Servidor2)'); return; }
 
-      // After applying, for each selected server, total must be <= telasVal (on add/edit); final save requires equality
       const exceed = serversSelected.some(sid => (pros[sid] || 0) > telasVal);
       if (exceed) { DomUtils.toast(`A operação excede o limite de ${telasVal} telas para um dos servidores`); return; }
 
-      // If editing
       if (editingIndex >= 0) {
-        // update state
         pontosState[editingIndex] = { servidor, app: appId, pontosSimultaneos: pontosNum, usuario, senha };
         editingIndex = -1;
         pfAddBtn.textContent = 'Adicionar ponto';
         pfCancelEditBtn.style.display = 'none';
       } else {
-        // push new
         pontosState.push({ servidor, app: appId, pontosSimultaneos: pontosNum, usuario, senha });
       }
 
       resetPontoForm();
       renderPontosList();
       validateAll();
-      // focus speed: put focus on app select
       pfAppSel.focus();
     });
 
-    // cancel edit
     pfCancelEditBtn.addEventListener('click', () => {
       editingIndex = -1;
       pfAddBtn.textContent = 'Adicionar ponto';
@@ -402,19 +379,17 @@ window.ClientesView = (function () {
       resetPontoForm();
     });
 
-    // reset ponto form
     function resetPontoForm() {
-      // default servidor to selectS1 if set
       if (selectS1.value) pfServidorSel.value = selectS1.value;
       else pfServidorSel.value = '';
       populatePfApps(pfServidorSel.value);
       pfAppSel.value = '';
       pfPontosInp.value = 1;
+      pfPontosInp.disabled = false;
       pfUserInp.value = '';
       pfPassInp.value = '';
     }
 
-    // render pontos list (summary) with editar/remover
     function renderPontosList() {
       DomUtils.clearChildren(pontosListEl);
       if (!pontosState.length) {
@@ -433,11 +408,12 @@ window.ClientesView = (function () {
           const actionsTd = document.createElement('td');
           const btnEdit = DomUtils.createEl('button', { class: 'btn ghost', text: 'Editar' });
           btnEdit.addEventListener('click', () => {
-            // load into ponto form for editing
             editingIndex = idx;
             pfServidorSel.value = p.servidor;
             populatePfApps(pfServidorSel.value);
             pfAppSel.value = p.app;
+            // ensure lock state for pontosSimultaneos if app exclusive
+            handleAppChangeLock();
             pfPontosInp.value = p.pontosSimultaneos;
             pfUserInp.value = p.usuario;
             pfPassInp.value = p.senha;
@@ -464,9 +440,8 @@ window.ClientesView = (function () {
       renderTotaisPorServidor();
     }
 
-    // compute totals per server from pontosState
     function computeTotals() {
-      const totals = {}; // serverId -> sum
+      const totals = {};
       pontosState.forEach(p => {
         if (!p.servidor) return;
         totals[p.servidor] = (totals[p.servidor] || 0) + Number(p.pontosSimultaneos || 0);
@@ -477,11 +452,9 @@ window.ClientesView = (function () {
     function computeTotalsIfApplied(candidate, editingIndexLocal) {
       const totals = computeTotals();
       if (editingIndexLocal >= 0) {
-        // subtract existing editing item
         const ex = pontosState[editingIndexLocal];
         if (ex && ex.servidor) totals[ex.servidor] = (totals[ex.servidor] || 0) - Number(ex.pontosSimultaneos || 0);
       }
-      // add candidate
       if (candidate && candidate.servidor) totals[candidate.servidor] = (totals[candidate.servidor] || 0) + Number(candidate.pontosSimultaneos || 0);
       return totals;
     }
@@ -500,10 +473,8 @@ window.ClientesView = (function () {
       totaisContent.appendChild(div);
     }
 
-    // validate entire form (enables saveBtn only when all good)
     async function validateAll() {
       let valid = true;
-      // basic client validations
       if (!inputNome.value.trim()) { errNome.textContent = 'Nome obrigatório'; errNome.classList.remove('hidden'); valid = false; } else { errNome.classList.add('hidden'); }
       const telVal = inputTel.value.replace(/\D/g, '');
       if (!telVal) { errTel.textContent = 'Telefone obrigatório'; errTel.classList.remove('hidden'); valid = false; } else { errTel.classList.add('hidden'); }
@@ -512,7 +483,6 @@ window.ClientesView = (function () {
       if (!telasVal || telasVal < 1) { errTelas.textContent = 'Telas deve ser >=1'; errTelas.classList.remove('hidden'); valid = false; } else { errTelas.classList.add('hidden'); }
 
       if (!selectS1.value) { errS1.textContent = 'Servidor 1 obrigatório'; errS1.classList.remove('hidden'); valid = false; } else { errS1.classList.add('hidden'); }
-      // vencimento mandatory and > today
       if (!inputVenc.value) { errVenc.textContent = 'Data de vencimento obrigatória'; errVenc.classList.remove('hidden'); valid = false; }
       else {
         const chosen = new Date(inputVenc.value + 'T00:00:00');
@@ -520,7 +490,6 @@ window.ClientesView = (function () {
         if (chosen <= startOfToday) { errVenc.textContent = 'Data deve ser maior que hoje'; errVenc.classList.remove('hidden'); valid = false; } else { errVenc.classList.add('hidden'); }
       }
 
-      // pontos: ensure that for each selected server, sum == telasVal
       const totals = computeTotals();
       const s1id = selectS1.value ? Number(selectS1.value) : null;
       const s2id = selectS2.value ? Number(selectS2.value) : null;
@@ -530,11 +499,7 @@ window.ClientesView = (function () {
       if (s2id) {
         if ((totals[s2id] || 0) !== telasVal) { errTelas.textContent = `Servidor 2: soma pontos deve ser exatamente ${telasVal}`; errTelas.classList.remove('hidden'); valid = false; }
       }
-      if (!s2id && s1id && (totals[s1id] || 0) !== telasVal) {
-        // already handled above
-      }
 
-      // local uniqueness for exclusive apps (check among pontosState)
       for (let i = 0; i < pontosState.length; i++) {
         const p = pontosState[i];
         const appMeta = apps.find(a => a.id === p.app);
@@ -544,20 +509,16 @@ window.ClientesView = (function () {
         }
       }
 
-      // global uniqueness for exclusive apps checked on save as final step
-
       saveBtn.disabled = !valid;
       return valid;
     }
 
-    // mask password in list for readability
     function maskPassword(s) {
       if (!s) return '';
       if (s.length <= 2) return '*'.repeat(s.length);
       return s[0] + '*'.repeat(Math.max(0, s.length - 2)) + s.slice(-1);
     }
 
-    // compute date preserving day with months addition, adjust to 1st next month if day missing
     function computeVencimentoByMonths(dateRef, monthsToAdd) {
       const origDay = dateRef.getDate();
       const target = new Date(dateRef);
@@ -570,22 +531,18 @@ window.ClientesView = (function () {
       return tryDate;
     }
 
-    // compute totals and render list initially
     resetPontoForm();
     renderPontosList();
     validateAll();
 
-    // cancel modal
     cancelBtn.addEventListener('click', () => {
       if (confirm('Fechar sem salvar?')) document.body.removeChild(overlay);
     });
 
-    // Save client flow: perform global uniqueness checks for exclusive apps, then call transactional create
     saveBtn.addEventListener('click', async () => {
       const ok = await validateAll();
       if (!ok) { DomUtils.toast('Corrija os erros antes de salvar'); return; }
 
-      // final global uniqueness check for exclusive apps
       try {
         for (const p of pontosState) {
           const appMeta = apps.find(a => a.id === p.app);
@@ -601,7 +558,6 @@ window.ClientesView = (function () {
         return;
       }
 
-      // build payloads
       const clientePayload = {
         nome: inputNome.value.trim(),
         telefone: inputTel.value.trim(),
@@ -627,7 +583,6 @@ window.ClientesView = (function () {
         senha: p.senha
       }));
 
-      // call service (mock transaction)
       try {
         saveBtn.disabled = true;
         await ClienteService.createWithAssinaturaAndPontos(clientePayload, assinaturaPayload, pontosPayloads);
