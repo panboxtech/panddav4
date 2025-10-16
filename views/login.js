@@ -2,79 +2,129 @@
 // Tela de login sem sidebar carregada.
 // Comportamentos:
 // - Aguarda DOMContentLoaded
-// - Se #login-container não existir, cria um container e injeta um formulário + botões mock funcional
+// - Garante que exista #login-container (cria somente se faltar)
+// - Se criou o container automaticamente, não exibe aviso repetido e injeta botões mock funcionais
+// - Usa referências diretas aos botões criados (não depende de getElementById após innerHTML)
 // - Ao logar com sucesso, chama Layout.initSidebar() e redireciona para /dashboard
-// - Se AuthService.mockLogin não existir, cria fallback de mock de sessão para testes
 
 window.LoginView = (function () {
   async function init() {
+    // Aguarda DOM estar pronto para evitar execução prematura
     if (document.readyState === 'loading') {
-      await new Promise(res => document.addEventListener('DOMContentLoaded', res, { once: true }));
+      await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
     }
 
     let container = document.getElementById('login-container');
-    const createdAutomatically = !container;
+    let createdAutomatically = false;
 
     if (!container) {
-      console.warn('LoginView: elemento #login-container não encontrado. Criando container automaticamente. Para corrigir permanentemente, adicione <div id="login-container"></div> ao template de login.');
+      // Criar container fallback de forma silenciosa (sem warning repetido)
+      createdAutomatically = true;
       container = document.createElement('div');
       container.id = 'login-container';
-      // estilos mínimos para ficar visível
-      container.style.maxWidth = '420px';
+      // Estilos mínimos para visibilidade durante testes
+      container.style.maxWidth = '480px';
       container.style.margin = '36px auto';
       container.style.padding = '16px';
-      container.style.boxShadow = '0 4px 12px rgba(0,0,0,0.06)';
+      container.style.boxShadow = '0 6px 20px rgba(0,0,0,0.06)';
       container.style.background = '#fff';
       container.style.borderRadius = '8px';
+      // inserir no body como fallback
       document.body.appendChild(container);
     }
 
-    // Monta o formulário principal (sempre)
+    // montar o form principal
     const form = document.createElement('form');
     form.className = 'login-form';
     form.innerHTML = `
-      <label style="display:block;margin-bottom:10px">
+      <label style="display:block;margin-bottom:12px">
         <div style="font-size:13px;margin-bottom:6px">Email</div>
-        <input type="email" name="email" class="input" required style="width:100%;box-sizing:border-box;padding:8px">
+        <input type="email" name="email" class="input" required style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e6e9ee;border-radius:6px">
       </label>
-      <label style="display:block;margin-bottom:10px">
+      <label style="display:block;margin-bottom:12px">
         <div style="font-size:13px;margin-bottom:6px">Senha</div>
-        <input type="password" name="senha" class="input" required style="width:100%;box-sizing:border-box;padding:8px">
+        <input type="password" name="senha" class="input" required style="width:100%;box-sizing:border-box;padding:10px;border:1px solid #e6e9ee;border-radius:6px">
       </label>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
         <button type="submit" class="btn">Entrar</button>
       </div>
     `;
 
-    // Se criamos o container automaticamente, adicionamos também botões de mock para facilitar testes
-    const mockArea = document.createElement('div');
-    mockArea.style.marginTop = '12px';
+    // área de mock (criada como elementos reais para evitar problemas com getElementById)
+    let mockArea = null;
+    let mockUserBtn = null;
+    let mockAdminBtn = null;
+    let mockFailBtn = null;
+
     if (createdAutomatically) {
-      mockArea.innerHTML = `
-        <div style="font-size:13px;color:#666;margin-bottom:8px">Ambiente de testes: botões mock</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button type="button" id="mock-user-btn" class="btn ghost">Entrar (mock user)</button>
-          <button type="button" id="mock-admin-btn" class="btn ghost">Entrar (mock admin)</button>
-          <button type="button" id="mock-fail-btn" class="btn ghost">Mock falha</button>
-        </div>
-      `;
+      mockArea = document.createElement('div');
+      mockArea.style.marginTop = '14px';
+      mockArea.style.display = 'flex';
+      mockArea.style.flexDirection = 'column';
+      mockArea.style.gap = '8px';
+
+      const mockInfo = document.createElement('div');
+      mockInfo.style.fontSize = '13px';
+      mockInfo.style.color = '#666';
+      mockInfo.textContent = 'Ambiente de testes: botões mock';
+
+      const mockBtnsWrap = document.createElement('div');
+      mockBtnsWrap.style.display = 'flex';
+      mockBtnsWrap.style.gap = '8px';
+      mockBtnsWrap.style.flexWrap = 'wrap';
+
+      mockUserBtn = document.createElement('button');
+      mockUserBtn.type = 'button';
+      mockUserBtn.className = 'btn ghost';
+      mockUserBtn.textContent = 'Entrar (mock user)';
+
+      mockAdminBtn = document.createElement('button');
+      mockAdminBtn.type = 'button';
+      mockAdminBtn.className = 'btn ghost';
+      mockAdminBtn.textContent = 'Entrar (mock admin)';
+
+      mockFailBtn = document.createElement('button');
+      mockFailBtn.type = 'button';
+      mockFailBtn.className = 'btn ghost';
+      mockFailBtn.textContent = 'Mock falha';
+
+      mockBtnsWrap.appendChild(mockUserBtn);
+      mockBtnsWrap.appendChild(mockAdminBtn);
+      mockBtnsWrap.appendChild(mockFailBtn);
+
+      mockArea.appendChild(mockInfo);
+      mockArea.appendChild(mockBtnsWrap);
     }
 
-    // anexar no container
+    // anexar ao container
     container.innerHTML = '';
     container.appendChild(form);
-    if (createdAutomatically) container.appendChild(mockArea);
+    if (createdAutomatically && mockArea) container.appendChild(mockArea);
 
-    // helper: fallback de mock session caso AuthService.mockLogin não exista
+    // fallback helper para criar sessão mock quando AuthService não existir
     function fallbackCreateSession(role = 'user') {
-      const session = {
-        user: { email: role === 'admin' ? 'admin@mock' : 'user@mock', role },
+      return {
+        user: { email: role === 'admin' ? 'admin@mock' : 'user@mock', role, adminMaster: role === 'admin' },
         token: 'mock-token-' + Math.random().toString(36).slice(2, 10)
       };
-      return session;
     }
 
-    // handler submit padrão (real)
+    // função para inicializar sessão (com Layout) de maneira centralizada
+    async function finalizeLogin(session) {
+      if (!session || !session.user) {
+        DomUtils.toast('Erro ao autenticar');
+        return;
+      }
+      // inicializa sidebar somente após login, se disponível
+      if (window.Layout && typeof window.Layout.initSidebar === 'function') {
+        try { window.Layout.initSidebar(); } catch (e) { console.error('Erro ao inicializar sidebar:', e); }
+      }
+      window.sessionAdmin = session;
+      // redireciona para dashboard
+      location.hash = '/dashboard';
+    }
+
+    // submit do form principal (tentativa real de login)
     form.addEventListener('submit', async (ev) => {
       ev.preventDefault();
       const fd = new FormData(form);
@@ -86,82 +136,56 @@ window.LoginView = (function () {
         if (window.AuthService && typeof window.AuthService.login === 'function') {
           session = await AuthService.login({ email, senha });
         } else {
-          // fallback: simulate a successful login for any credentials (development convenience)
-          console.warn('AuthService.login não encontrado. Usando mock fallback de sessão.');
+          // fallback: criar sessão mock (não exibir warning repetido)
+          console.info('AuthService.login não encontrado. Usando sessão mock para desenvolvimento.');
           session = fallbackCreateSession(email === 'admin' ? 'admin' : 'user');
         }
-
-        if (session && session.user) {
-          if (window.Layout && typeof window.Layout.initSidebar === 'function') {
-            try { window.Layout.initSidebar(); } catch (e) { console.error('Erro ao inicializar sidebar:', e); }
-          }
-          window.sessionAdmin = session;
-          location.hash = '/dashboard';
-        } else {
-          DomUtils.toast('Erro ao autenticar');
-        }
+        await finalizeLogin(session);
       } catch (err) {
-        DomUtils.toast(err.message || 'Falha ao autenticar');
+        DomUtils.toast(err?.message || 'Falha ao autenticar');
         console.error(err);
       }
     });
 
-    // somente se mockArea foi criado, ligar os botões mock
-    if (createdAutomatically) {
-      const mockUserBtn = document.getElementById('mock-user-btn');
-      const mockAdminBtn = document.getElementById('mock-admin-btn');
-      const mockFailBtn = document.getElementById('mock-fail-btn');
-
-      if (mockUserBtn) {
-        mockUserBtn.addEventListener('click', async () => {
-          try {
-            let session = null;
-            if (window.AuthService && typeof window.AuthService.mockLogin === 'function') {
-              session = await AuthService.mockLogin({ role: 'user' });
-            } else {
-              session = fallbackCreateSession('user');
-            }
-            if (session && session.user) {
-              if (window.Layout && typeof window.Layout.initSidebar === 'function') {
-                try { window.Layout.initSidebar(); } catch (e) { console.error('Erro ao inicializar sidebar:', e); }
-              }
-              window.sessionAdmin = session;
-              location.hash = '/dashboard';
-            }
-          } catch (err) {
-            DomUtils.toast('Erro mock login'); console.error(err);
+    // ligar botões mock criados diretamente (evita dependência de IDs no DOM)
+    if (createdAutomatically && mockUserBtn && mockAdminBtn && mockFailBtn) {
+      mockUserBtn.addEventListener('click', async () => {
+        try {
+          let session = null;
+          if (window.AuthService && typeof window.AuthService.mockLogin === 'function') {
+            session = await AuthService.mockLogin({ role: 'user' });
+          } else {
+            session = fallbackCreateSession('user');
           }
-        });
-      }
+          await finalizeLogin(session);
+        } catch (err) {
+          DomUtils.toast('Erro no mock login'); console.error(err);
+        }
+      });
 
-      if (mockAdminBtn) {
-        mockAdminBtn.addEventListener('click', async () => {
-          try {
-            let session = null;
-            if (window.AuthService && typeof window.AuthService.mockLogin === 'function') {
-              session = await AuthService.mockLogin({ role: 'admin' });
-            } else {
-              session = fallbackCreateSession('admin');
-            }
-            if (session && session.user) {
-              if (window.Layout && typeof window.Layout.initSidebar === 'function') {
-                try { window.Layout.initSidebar(); } catch (e) { console.error('Erro ao inicializar sidebar:', e); }
-              }
-              window.sessionAdmin = session;
-              location.hash = '/dashboard';
-            }
-          } catch (err) {
-            DomUtils.toast('Erro mock admin login'); console.error(err);
+      mockAdminBtn.addEventListener('click', async () => {
+        try {
+          let session = null;
+          if (window.AuthService && typeof window.AuthService.mockLogin === 'function') {
+            session = await AuthService.mockLogin({ role: 'admin' });
+          } else {
+            session = fallbackCreateSession('admin');
           }
-        });
-      }
+          await finalizeLogin(session);
+        } catch (err) {
+          DomUtils.toast('Erro no mock admin login'); console.error(err);
+        }
+      });
 
-      if (mockFailBtn) {
-        mockFailBtn.addEventListener('click', () => {
-          DomUtils.toast('Mock: falha simulada'); console.warn('Mock fail button clicked');
-        });
-      }
+      mockFailBtn.addEventListener('click', () => {
+        DomUtils.toast('Mock: falha simulada');
+        console.warn('Mock fail button clicked');
+      });
     }
+
+    // foco no primeiro campo para melhor UX
+    const firstInput = form.querySelector('input[name="email"]');
+    if (firstInput) firstInput.focus();
   }
 
   return { init };
