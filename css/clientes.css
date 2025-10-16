@@ -1,0 +1,4 @@
+.client-list table{width:100%;border-collapse:collapse}
+.client-list th, .client-list td{padding:8px;border-bottom:1px solid #eef1f5;text-align:left}
+.client-actions button{margin-right:6px}
+.ponto-block{border:1px dashed #e1e6f0;padding:8px;border-radius:6px;margin-top:8px}
