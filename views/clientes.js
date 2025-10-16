@@ -1,7 +1,7 @@
 // views/clientes.js
 // Controller da view Clientes com modal de Novo Cliente atualizado
 // - Seções expansíveis (accordion)
-// - Em mobile, comportamento como wizard em 2 etapas (Cliente -> Pontos)
+// - Removidos botões Próximo / Voltar e toda lógica de wizard
 // - Mantém validações, soma por servidor, lista resumida, edição de pontos, e persistência mock
 
 window.ClientesView = (function () {
@@ -124,7 +124,7 @@ window.ClientesView = (function () {
   }
 
   // -------------------------
-  // Modal: Novo Cliente (accordion + mobile wizard)
+  // Modal: Novo Cliente (accordion; sem wizard nav)
   // -------------------------
   async function openNewClientModal() {
     const [planos, servidores, apps] = await Promise.all([PlanoService.list(), ServidorService.list(), AppService.list()]);
@@ -153,8 +153,7 @@ window.ClientesView = (function () {
     const title = document.createElement('h3'); title.textContent = 'Novo Cliente';
     box.appendChild(title);
 
-    // accordion sections container
-    // Section 1 - Dados do Cliente
+    // Section Cliente
     const sectionCliente = document.createElement('div'); sectionCliente.className = 'section expanded';
     const headerCliente = document.createElement('div'); headerCliente.className = 'section-header';
     headerCliente.innerHTML = `<h4>Dados do Cliente</h4><button class="section-toggle-btn">Minimizar</button>`;
@@ -162,7 +161,7 @@ window.ClientesView = (function () {
     const bodyCliente = document.createElement('div'); bodyCliente.className = 'section-body';
     sectionCliente.appendChild(bodyCliente);
 
-    // Section 2 - Gerenciar Pontos
+    // Section Pontos
     const sectionPontos = document.createElement('div'); sectionPontos.className = 'section expanded';
     const headerPontos = document.createElement('div'); headerPontos.className = 'section-header';
     headerPontos.innerHTML = `<h4>Gerenciar Pontos de Acesso</h4><button class="section-toggle-btn">Minimizar</button>`;
@@ -170,7 +169,6 @@ window.ClientesView = (function () {
     const bodyPontos = document.createElement('div'); bodyPontos.className = 'section-body';
     sectionPontos.appendChild(bodyPontos);
 
-    // build forms inside bodies (reuse previous form layout code simplified)
     // CLIENTE FIELDS
     const leftCol = document.createElement('div');
     leftCol.style.display = 'grid';
@@ -222,7 +220,7 @@ window.ClientesView = (function () {
 
     bodyCliente.appendChild(leftCol);
 
-    // PONTOS FIELDS (summary and form)
+    // PONTOS FIELDS
     const rightCol = document.createElement('div');
     rightCol.style.display = 'grid';
     rightCol.style.gap = '8px';
@@ -276,17 +274,11 @@ window.ClientesView = (function () {
 
     bodyPontos.appendChild(rightCol);
 
-    // put sections into box
+    // assemble sections
     box.appendChild(sectionCliente);
     box.appendChild(sectionPontos);
 
-    // footer (save/cancel) and wizard nav for mobile
-    const wizardNav = document.createElement('div'); wizardNav.className = 'wizard-nav hidden';
-    const btnPrev = DomUtils.createEl('button', { class: 'btn ghost', text: 'Voltar' });
-    const btnNext = DomUtils.createEl('button', { class: 'btn', text: 'Próximo' });
-    wizardNav.appendChild(btnPrev); wizardNav.appendChild(btnNext);
-    box.appendChild(wizardNav);
-
+    // footer
     const footer = document.createElement('div'); footer.style.display='flex'; footer.style.justifyContent='flex-end'; footer.style.gap='8px'; footer.style.marginTop='12px';
     const cancelBtn = DomUtils.createEl('button', { class: 'btn ghost', text: 'Cancelar' });
     const saveBtn = DomUtils.createEl('button', { class: 'btn', text: 'Salvar Cliente' });
@@ -301,7 +293,7 @@ window.ClientesView = (function () {
     const pontosState = [];
     let editingIndex = -1;
 
-    // --- helpers (reused logic from previous implementation) ---
+    // helpers
     function getSelectedServerIds() {
       const s1 = selectS1.value ? Number(selectS1.value) : null;
       const s2 = selectS2.value ? Number(selectS2.value) : null;
@@ -332,7 +324,7 @@ window.ClientesView = (function () {
       validateAll();
     });
 
-    // toggle handlers for accordion
+    // accordion toggle functions
     function setSectionState(sectionEl, expanded) {
       if (expanded) { sectionEl.classList.remove('collapsed'); sectionEl.classList.add('expanded'); sectionEl.querySelector('.section-toggle-btn').textContent = 'Minimizar'; }
       else { sectionEl.classList.remove('expanded'); sectionEl.classList.add('collapsed'); sectionEl.querySelector('.section-toggle-btn').textContent = 'Expandir'; }
@@ -346,40 +338,7 @@ window.ClientesView = (function () {
       setSectionState(sectionPontos, !expanded);
     });
 
-    // mobile detection to show wizard nav
-    function isMobileWidth() { return window.matchMedia && window.matchMedia('(max-width:860px)').matches; }
-    function updateWizardVisibility() {
-      if (isMobileWidth()) {
-        wizardNav.classList.remove('hidden');
-        // show only first section initially
-        setSectionState(sectionCliente, true);
-        setSectionState(sectionPontos, false);
-      } else {
-        wizardNav.classList.add('hidden');
-        // show both on desktop
-        setSectionState(sectionCliente, true);
-        setSectionState(sectionPontos, true);
-      }
-    }
-    window.addEventListener('resize', updateWizardVisibility);
-    updateWizardVisibility();
-
-    // wizard navigation
-    btnNext.addEventListener('click', async () => {
-      // validate basic client fields before moving
-      const ok = await validateClientStep();
-      if (!ok) return;
-      setSectionState(sectionCliente, false);
-      setSectionState(sectionPontos, true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-    btnPrev.addEventListener('click', () => {
-      setSectionState(sectionPontos, false);
-      setSectionState(sectionCliente, true);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-
-    // server selection effects
+    // server and app logic (same as before)
     selectS1.addEventListener('change', () => { adjustPfServidorAvailability(); resetPontoForm(); renderPontosList(); validateAll(); updatePfServidorOptionsLock(); });
     selectS2.addEventListener('change', () => { adjustPfServidorAvailability(); resetPontoForm(); renderPontosList(); validateAll(); updatePfServidorOptionsLock(); });
 
@@ -425,7 +384,6 @@ window.ClientesView = (function () {
 
     pfServidorSel.addEventListener('change', () => { populatePfApps(pfServidorSel.value); });
 
-    // app change logic: lock pontos if exclusive
     pfAppSel.addEventListener('change', handleAppChangeLock);
     function handleAppChangeLock() {
       const appId = pfAppSel.value ? Number(pfAppSel.value) : null;
@@ -563,7 +521,6 @@ window.ClientesView = (function () {
       if (!clientOk) valid = false;
       const totals = computeTotals(); const telasVal = Number(inputTelas.value) || 0; const sids = getSelectedServerIds();
       for (const sid of sids) { if ((totals[sid] || 0) !== telasVal) { errTelas.textContent = `Servidor: soma pontos deve ser exatamente ${telasVal}`; errTelas.classList.remove('hidden'); valid=false; } }
-      // uniqueness local for exclusive apps
       for (let i=0;i<pontosState.length;i++){ const p=pontosState[i]; const appMeta = apps.find(a=>a.id===p.app); if (appMeta && !appMeta.multiplosAcessos) { const dup = pontosState.some((q,j)=>j!==i && q.app===p.app && q.usuario===p.usuario); if (dup) { DomUtils.toast(`Usuário ${p.usuario} duplicado em app exclusivo`); valid=false; break; } } }
       saveBtn.disabled = !valid; return valid;
     }
@@ -571,15 +528,14 @@ window.ClientesView = (function () {
     function maskPassword(s){ if (!s) return ''; if (s.length<=2) return '*'.repeat(s.length); return s[0] + '*'.repeat(Math.max(0,s.length-2)) + s.slice(-1); }
     function computeVencimentoByMonths(dateRef, monthsToAdd){ const origDay = dateRef.getDate(); const target = new Date(dateRef); target.setMonth(target.getMonth() + monthsToAdd); const year = target.getFullYear(); const month = target.getMonth(); const tryDate = new Date(year, month, origDay); if (tryDate.getMonth() !== month) return new Date(year, month+1, 1); return tryDate; }
 
-    // initial state
+    // initial
     resetPontoForm(); renderPontosList(); validateAll(); updatePfServidorOptionsLock();
 
-    // cancel/save handlers
+    // handlers
     cancelBtn.addEventListener('click', ()=>{ if (confirm('Fechar sem salvar?')) document.body.removeChild(overlay); });
     saveBtn.addEventListener('click', async ()=> {
       const ok = await validateAll(); if (!ok) { DomUtils.toast('Corrija os erros antes de salvar'); return; }
       try {
-        // global uniqueness for exclusive apps
         for (const p of pontosState) {
           const appMeta = apps.find(a=>a.id===p.app);
           if (!appMeta) throw new Error('App inválido');
